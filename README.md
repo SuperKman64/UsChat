@@ -1,1 +1,4 @@
 # UsChat
+So Basically, UsChat is like a facetme chat. you can call people, text with them (might have bugs), and yeah. Just kind of have fun.
+# How To Chat
+Heres what you do. you type the name of your custom server, and then hit the Join Room button. Your browser might ask for microphone and camera access. Select yes if you want this to work. Then you have your friend type the same thing. it might not work bc i unfortunately, have only 1 friend. but this app is optimized for 2 people only. (applaud) also it may be bugged bc i havent officially asked my friend to test this for me, so if you want to chat just right Kman63204 in any comment in the repo. However, i may be a bit... young... but dont mind that. if you do that ill set the server for my chat to be TestChat. Have fun, let me know any bugs, and PLEASE GUYS IM LONELY-
