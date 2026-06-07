@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ably Video Call & Chat</title>
+    <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; margin: 0; padding: 20px; }
+        #video-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 800px; }
+        video { width: 100%; background: #000; border-radius: 8px; transform: scaleX(-1); }
+        #chat-container { width: 100%; max-width: 800px; margin-top: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        #messages { height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; display: flex; flex-direction: column; }
+        .controls { margin-bottom: 20px; }
+        input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 8px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <input type="text" id="roomInput" placeholder="Enter Room Name">
+        <button onclick="joinRoom()">Join Room</button>
+    </div>
+
+    <div id="video-grid">
+        <video id="localVideo" autoplay muted playsinline></video>
+        <video id="remoteVideo" autoplay playsinline></video>
+    </div>
+
+    <div id="chat-container">
+        <div id="messages"></div>
+        <input type="text" id="chatInput" placeholder="Type a message..." style="width: 80%;">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        const ABLY_KEY = 'FZrirg.C87wig:BxxBpwb6Fcf_gRPEOLReBznlfvEM4cJtGN-tAlDEuEA';
+        const ably = new Ably.Realtime(ABLY_KEY);
+        let channel, pc, localStream;
+
+        const servers = { iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }] };
+
+        async function joinRoom() {
+            const roomId = document.getElementById('roomInput').value;
+            if (!roomId) return alert("Enter a room name");
+
+            channel = ably.channels.get(roomId);
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            document.getElementById('localVideo').srcObject = localStream;
+
+            channel.subscribe('signal', async (msg) => {
+                if (msg.clientId === ably.auth.clientId) return;
+                const { type, sdp, candidate } = msg.data;
+
+                if (type === 'offer') {
+                    await createPeerConnection();
+                    await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    channel.publish('signal', { type: 'answer', sdp: answer.sdp });
+                } else if (type === 'answer') {
+                    await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
+                } else if (candidate) {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                }
+            });
+
+            channel.subscribe('chat', (msg) => {
+                const msgDiv = document.createElement('div');
+                msgDiv.textContent = `${msg.clientId || 'Peer'}: ${msg.data}`;
+                document.getElementById('messages').appendChild(msgDiv);
+            });
+
+            // Start the call logic
+            await createPeerConnection();
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            channel.publish('signal', { type: 'offer', sdp: offer.sdp });
+        }
+
+        async function createPeerConnection() {
+            if (pc) return;
+            pc = new RTCPeerConnection(servers);
+            
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) channel.publish('signal', { candidate: event.candidate });
+            };
+
+            pc.ontrack = (event) => {
+                document.getElementById('remoteVideo').srcObject = event.streams[0];
+            };
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chatInput');
+            if (input.value && channel) {
+                channel.publish('chat', input.value);
+                input.value = '';
+            }
+        }
+    </script>
+</body>
+</html>
