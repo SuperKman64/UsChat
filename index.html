@@ -1,135 +1,625 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UsChat</title>
-    <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
-    <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; margin: 0; padding: 20px; }
-        #video-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 800px; }
-        video { width: 100%; background: #000; border-radius: 8px; transform: scaleX(-1); }
-        #chat-container { width: 100%; max-width: 800px; margin-top: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        #messages { height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; display: flex; flex-direction: column; }
-        .controls { margin-bottom: 20px; }
-        input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 8px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UsChat</title>
+
+<script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
+
+<style>
+*{
+    box-sizing:border-box;
+}
+
+body{
+    margin:0;
+    padding:20px;
+    font-family:sans-serif;
+    background:#f0f2f5;
+
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+}
+
+.controls{
+    margin-bottom:20px;
+}
+
+input{
+    padding:10px;
+    border-radius:8px;
+    border:1px solid #ccc;
+}
+
+button{
+    padding:10px 16px;
+    border:none;
+    border-radius:8px;
+    background:#007bff;
+    color:white;
+    cursor:pointer;
+}
+
+button:hover{
+    opacity:.95;
+}
+
+#video-grid{
+    width:100%;
+    max-width:900px;
+
+    display:grid;
+    grid-template-columns:1fr 1fr;
+
+    gap:10px;
+}
+
+video{
+    width:100%;
+    background:black;
+
+    border-radius:12px;
+
+    aspect-ratio:16/9;
+
+    object-fit:cover;
+}
+
+#localVideo{
+    transform:scaleX(-1);
+}
+
+#remoteVideo{
+    transform:none;
+}
+
+#chat-container{
+    width:100%;
+    max-width:900px;
+
+    margin-top:20px;
+
+    background:white;
+
+    border-radius:12px;
+
+    padding:15px;
+
+    box-shadow:
+        0 2px 10px rgba(0,0,0,.08);
+}
+
+#messages{
+    height:220px;
+
+    overflow-y:auto;
+
+    border:1px solid #ddd;
+
+    border-radius:8px;
+
+    padding:10px;
+
+    margin-bottom:10px;
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:8px;
+}
+
+.msg{
+    padding:8px;
+    background:#f5f5f5;
+
+    border-radius:8px;
+}
+
+.chat-row{
+    display:flex;
+
+    gap:10px;
+}
+
+.chat-row input{
+    flex:1;
+}
+
+@media(max-width:700px){
+
+#video-grid{
+grid-template-columns:1fr;
+}
+
+}
+</style>
 </head>
+
 <body>
 
-    <div class="controls">
-        <input type="text" id="roomInput" placeholder="Enter Room Name">
-        <button id="joinBtn" onclick="joinRoom()">Join Room</button>
-    </div>
+<div class="controls">
+<input
+id="roomInput"
+placeholder="Enter Room Name">
 
-    <div id="video-grid">
-        <video id="localVideo" autoplay muted playsinline></video>
-        <video id="remoteVideo" autoplay playsinline></video>
-    </div>
+<button
+id="joinBtn"
+onclick="joinRoom()">
+Join Room
+</button>
+</div>
 
-    <div id="chat-container">
-        <div id="messages"></div>
-        <input type="text" id="chatInput" placeholder="Type a message..." style="width: 80%;">
-        <button onclick="sendMessage()">Send</button>
-    </div>
+<div id="video-grid">
 
-    <script>
-        const ABLY_KEY = 'FZrirg.C87wig:BxxBpwb6Fcf_gRPEOLReBznlfvEM4cJtGN-tAlDEuEA';
-        const ably = new Ably.Realtime(ABLY_KEY);
-        let channel, pc, localStream;
-        let iceQueue = [];
+<video
+id="localVideo"
+autoplay
+muted
+playsinline>
+</video>
 
-        const servers = { iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }] };
+<video
+id="remoteVideo"
+autoplay
+playsinline>
+</video>
 
-        async function joinRoom() {
-            const roomId = document.getElementById('roomInput').value;
-            if (!roomId) return alert("Enter a room name");
-            document.getElementById('joinBtn').disabled = true;
+</div>
 
-            channel = ably.channels.get(roomId);
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            document.getElementById('localVideo').srcObject = localStream;
+<div id="chat-container">
 
-            // Handle Signaling
-            channel.subscribe('signal', async (msg) => {
-                if (msg.connectionId === ably.connection.id) return; // Ignore own messages
-                const { type, sdp, candidate } = msg.data;
+<div id="messages"></div>
 
-                if (type === 'offer') {
-                    await createPeerConnection();
-                    await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    channel.publish('signal', { type: 'answer', sdp: answer.sdp });
-                    processIceQueue();
-                } else if (type === 'answer') {
-                    await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
-                    processIceQueue();
-                } else if (candidate) {
-                    if (pc && pc.remoteDescription) {
-                        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                    } else {
-                        iceQueue.push(candidate);
-                    }
-                }
-            });
+<div class="chat-row">
 
-            // Handle Chat
-            channel.subscribe('chat', (msg) => {
-                const msgDiv = document.createElement('div');
-                msgDiv.textContent = `${msg.connectionId === ably.connection.id ? 'You' : 'Friend'}: ${msg.data}`;
-                document.getElementById('messages').appendChild(msgDiv);
-            });
+<input
+id="chatInput"
+placeholder="Type a message...">
 
-            // Use Presence to trigger the call
-            channel.presence.subscribe('enter', async (member) => {
-                if (member.connectionId !== ably.connection.id) {
-                    // Someone else joined, I will initiate the call
-                    await initiateCall();
-                }
-            });
-            channel.presence.enter();
-        }
+<button onclick="sendMessage()">
+Send
+</button>
 
-        async function initiateCall() {
-            await createPeerConnection();
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            channel.publish('signal', { type: 'offer', sdp: offer.sdp });
-        }
+</div>
 
-        async function createPeerConnection() {
-            if (pc) return;
-            pc = new RTCPeerConnection(servers);
-            
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+</div>
 
-            pc.onicecandidate = (event) => {
-                if (event.candidate) {
-                    channel.publish('signal', { candidate: event.candidate });
-                }
-            };
+<script>
 
-            pc.ontrack = (event) => {
-                document.getElementById('remoteVideo').srcObject = event.streams[0];
-            };
-        }
+const ABLY_KEY =
+'FZrirg.C87wig:BxxBpwb6Fcf_gRPEOLReBznlfvEM4cJtGN-tAlDEuEA';
 
-        function processIceQueue() {
-            iceQueue.forEach(async (candidate) => {
-                await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            });
-            iceQueue = [];
-        }
+const ably =
+new Ably.Realtime(
+ABLY_KEY
+);
 
-        function sendMessage() {
-            const input = document.getElementById('chatInput');
-            if (input.value && channel) {
-                channel.publish('chat', input.value);
-                input.value = '';
-            }
-        }
-    </script>
+let channel;
+let pc;
+let localStream;
+
+let makingOffer =
+false;
+
+let iceQueue =
+[];
+
+const servers = {
+
+iceServers:[
+{
+urls:
+'stun:stun.l.google.com:19302'
+}
+
+]
+
+};
+
+const localVideo =
+document.getElementById(
+'localVideo'
+);
+
+const remoteVideo =
+document.getElementById(
+'remoteVideo'
+);
+
+const messages =
+document.getElementById(
+'messages'
+);
+
+async function joinRoom(){
+
+const room =
+roomInput.value
+.trim();
+
+if(!room){
+
+alert(
+'Enter room'
+);
+
+return;
+
+}
+
+joinBtn.disabled =
+true;
+
+channel =
+ably.channels.get(
+room
+);
+
+localStream =
+await navigator
+.mediaDevices
+.getUserMedia({
+
+video:true,
+audio:true
+
+});
+
+localVideo.srcObject =
+localStream;
+
+await createPeer();
+
+channel.subscribe(
+'signal',
+
+async(msg)=>{
+
+if(
+msg.connectionId
+===
+ably.connection.id
+)
+return;
+
+const d =
+msg.data;
+
+try{
+
+if(
+d.offer
+){
+
+await pc
+.setRemoteDescription(
+new RTCSessionDescription(
+d.offer
+)
+);
+
+await flushIce();
+
+const answer =
+await pc
+.createAnswer();
+
+await pc
+.setLocalDescription(
+answer
+);
+
+channel.publish(
+'signal',
+{
+answer:
+pc.localDescription
+}
+);
+
+}
+
+else if(
+d.answer
+){
+
+await pc
+.setRemoteDescription(
+new RTCSessionDescription(
+d.answer
+)
+);
+
+await flushIce();
+
+}
+
+else if(
+d.candidate
+){
+
+if(
+pc.remoteDescription
+){
+
+await pc
+.addIceCandidate(
+new RTCIceCandidate(
+d.candidate
+)
+);
+
+}
+
+else{
+
+iceQueue.push(
+d.candidate
+);
+
+}
+
+}
+
+}
+catch(err){
+
+console.error(
+err
+);
+
+}
+
+}
+
+);
+
+channel.subscribe(
+'chat',
+(msg)=>{
+
+const div =
+document
+.createElement(
+'div'
+);
+
+div.className =
+'msg';
+
+div.textContent =
+`${msg.connectionId===ably.connection.id?'You':'Friend'}: ${msg.data}`;
+
+messages.appendChild(
+div
+);
+
+messages.scrollTop =
+messages.scrollHeight;
+
+}
+);
+
+await channel
+.presence
+.enter();
+
+const members =
+await channel
+.presence
+.get();
+
+if(
+members.length
+>
+1
+){
+
+await makeOffer();
+
+}
+
+channel
+.presence
+.subscribe(
+
+'enter',
+
+async(
+member
+)=>{
+
+if(
+member.connectionId
+!==
+ably.connection.id
+){
+
+await makeOffer();
+
+}
+
+}
+
+);
+
+}
+
+async function createPeer(){
+
+if(pc)
+return;
+
+pc =
+new RTCPeerConnection(
+servers
+);
+
+localStream
+.getTracks()
+.forEach(
+
+track=>{
+
+pc.addTrack(
+track,
+localStream
+);
+
+}
+
+);
+
+pc.ontrack =
+(event)=>{
+
+remoteVideo.srcObject =
+event.streams[0];
+
+remoteVideo
+.play()
+.catch(()=>{});
+
+};
+
+pc.onicecandidate =
+(event)=>{
+
+if(
+event.candidate
+){
+
+channel.publish(
+'signal',
+{
+
+candidate:
+event.candidate
+
+}
+);
+
+}
+
+};
+
+}
+
+async function makeOffer(){
+
+if(
+makingOffer
+||
+pc.signalingState
+!==
+'stable'
+)
+return;
+
+makingOffer =
+true;
+
+try{
+
+const offer =
+await pc
+.createOffer();
+
+await pc
+.setLocalDescription(
+offer
+);
+
+channel.publish(
+'signal',
+{
+
+offer:
+pc.localDescription
+
+}
+);
+
+}
+
+finally{
+
+makingOffer =
+false;
+
+}
+
+}
+
+async function flushIce(){
+
+while(
+iceQueue.length
+){
+
+await pc
+.addIceCandidate(
+
+new RTCIceCandidate(
+
+iceQueue.shift()
+
+)
+
+);
+
+}
+
+}
+
+function sendMessage(){
+
+const text =
+chatInput.value
+.trim();
+
+if(
+text
+&&
+channel
+){
+
+channel.publish(
+'chat',
+text
+);
+
+chatInput.value =
+'';
+
+}
+
+}
+
+chatInput
+.addEventListener(
+'keydown',
+
+(e)=>{
+
+if(
+e.key
+===
+'Enter'
+){
+
+sendMessage();
+
+}
+
+}
+
+);
+
+</script>
+
 </body>
 </html>
